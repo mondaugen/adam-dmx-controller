@@ -1,0 +1,3 @@
+[submodule "DmxPy"]
+	path = DmxPy
+	url = https://github.com/davepaul0/DmxPy
