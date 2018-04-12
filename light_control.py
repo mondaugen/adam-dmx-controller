@@ -4,6 +4,18 @@ import random
 
 ### Settings you can set
 
+# The probability of choosing each routine
+ROUTINE_PROBS=[
+        20, # rest
+        20, # flash
+        20, # ramp
+        20, # continuous ramp
+        20, # pulse
+        ]
+
+# The amount of time to wait between routines
+ROUTINE_WAIT=[1,40]
+
 # DMX channel number for light
 LIGHT_DMX_CHAN=1
 
@@ -57,6 +69,10 @@ PULSE_INTENSITY=[120,255]
 
 ### Stuff below is just code
 
+def sleepseconds(secs):
+#    time.sleep(secs*0.1) # for testing, so we don't wait forever
+    time.sleep(secs)
+
 def weighted_choice(choices):
     total = sum(w for c, w in choices)
     r = random.uniform(0, total)
@@ -78,14 +94,19 @@ class light_ctl_c(DmxPy.DmxPy):
         Ramp from previous value at chan to val in dur seconds, incrementing
         each res seconds.
         if res > dur, the light will suddenly be at the value after dur
+        If dur or res are 0 they are just made some small positive number
         """
+        if dur == 0:
+            dur = 1e-3
+        if res == 0:
+            res = 1e-3
         old_val=ord(self.dmxData[chan])
         inc=(val-old_val)/(dur/res)
         while (dur > 0):
             if res > dur:
                 res = dur
                 inc = val - old_val
-            time.sleep(res)
+            sleepseconds(res)
             old_val+=inc
             self.send_val(chan,old_val)
             dur -= res
@@ -105,65 +126,85 @@ class light_ctl_c(DmxPy.DmxPy):
         dur-=2*ramp
         old_val=ord(self.dmxData[chan])
         self.ramp(chan,val,ramp,ramp_res)
-        time.sleep(dur)
+        sleepseconds(dur)
         self.ramp(chan,old_val,ramp,ramp_res)
 
 class light_conductor_c(light_ctl_c):
 
-    def rest(self):
+    def rest(self,verbose=False):
         """
         Just do nothing for a time.
         """
-        time.sleep(random.uniform(*REST_TIME_RANGE))
+        dur=random.uniform(*REST_TIME_RANGE)
+        if (verbose):
+            print " resting for %f seconds" % (dur,)
+        sleepseconds(dur)
 
-    def flash_routine(self):
+    def flash_routine(self,verbose=False):
         """
         Does the flashing routine.
         """
         nflashes = weighted_choice(FLASH_PROBS)
+        if (verbose):
+            print " flashing %d times" % (nflashes,)
         while nflashes > 0:
             nflashes -= 1
             v = random.uniform(*FLASH_INTENSITY)
             d = random.uniform(*FLASH_DUR) * GLOBAL_DUR
+            if (verbose):
+                print "  intensity %f, duration %f" % (v,d)
             self.pulse(LIGHT_DMX_CHAN,v,d)
             if (nflashes > 0):
                 ot = random.uniform(*FLASH_OFF_DUR)
-                time.sleep(ot)
+                if (verbose):
+                    print "  sleeping %f seconds" % (ot,)
+                sleepseconds(ot)
 
-    def _ramp_shape_1(dur):
+    def _ramp_shape_1(self,dur,verbose=False):
         """ up """
+        if (verbose):
+            print "ramp shape 1, dur %f" % (dur,)
         self.send_val(LIGHT_DMX_CHAN,0)
         self.ramp(LIGHT_DMX_CHAN,255,dur,res=RAMP_RES)
         self.send_val(LIGHT_DMX_CHAN,0)
 
-    def _ramp_shape_2(dur):
+    def _ramp_shape_2(self,dur,verbose=False):
         """ down """
+        if (verbose):
+            print "ramp shape 2, dur %f" % (dur,)
         self.send_val(LIGHT_DMX_CHAN,255)
         self.ramp(LIGHT_DMX_CHAN,0,dur,res=RAMP_RES)
         self.send_val(LIGHT_DMX_CHAN,0)
 
-    def _ramp_shape_3(dur):
+    def _ramp_shape_3(self,dur,verbose=False):
         """ saw shape """
-        _ramp_shape_2(dur*0.5)
-        _ramp_shape_1(dur*0.5)
+        if (verbose):
+            print "ramp shape 3, dur %f" % (dur,)
+        self._ramp_shape_2(dur*0.5)
+        self._ramp_shape_1(dur*0.5)
 
-    def _ramp_shape_4(dur):
+    def _ramp_shape_4(self,dur,verbose=False):
         """ "ASR" shape """
+        if (verbose):
+            print "ramp shape 4, dur %f" % (dur,)
         self.ramp(LIGHT_DMX_CHAN,255,dur/3,res=RAMP_RES)
-        time.sleep(dur/3)
+        sleepseconds(dur/3)
         self.ramp(LIGHT_DMX_CHAN,0,dur/3,res=RAMP_RES)
 
-    def ramp_routine(self):
+    def ramp_routine(self,forceshape=None,verbose=False):
         """
         Does the ramping routine
         """
         nramps = weighted_choice(RAMP_PROBS)
-        d = random.uniform(*RAMP_DUR) * GLOBAL_DUR
+        if forceshape:
+            d = forceshape
+        else:
+            d = random.uniform(*RAMP_DUR) * GLOBAL_DUR
         rampshape = random.randint(1,4)
         for n in range(nramps):
             getattr(self,"_ramp_shape_%d" % (rampshape,))(d)
     
-    def cont_ramp_routine(self):
+    def cont_ramp_routine(self,verbose=False):
         """
         Do a continuous ramp.
         """
@@ -173,11 +214,15 @@ class light_conductor_c(light_ctl_c):
                 for n in range(nsegs)]
         rtimes = [random.uniform(*CONT_RAMP_TIME_RANGE)
                 for _ in range(nsegs)]
+        if (verbose):
+            print "doing continuous ramp with (vals,times)"
         for s,r in zip(segvals,rtimes):
+            if (verbose):
+                print " (%f,%f)" % (s,r)
             self.ramp(LIGHT_DMX_CHAN,s,r,RAMP_RES)
         self.send_val(LIGHT_DMX_CHAN,0)
 
-    def pulse_routine(self):
+    def pulse_routine(self,verbose=False):
         """
         Do many pulses at constant rate.
         """
@@ -185,10 +230,43 @@ class light_conductor_c(light_ctl_c):
         sdur = random.uniform(*PULSE_SINGLE_DUR) / 1000.
         i = random.uniform(*PULSE_INTENSITY)
         p = 1
+        if (verbose):
+            print ("doing pulses for %f seconds,"
+                + " pulse dur %f, intensity %f") % (dur,sdur,i)
+
         while dur > 0:
             if p > 0:
                 self.pulse(LIGHT_DMX_CHAN,i,sdur,ramp=dur*0.1)
             else:
-                time.sleep(sdur)
+                sleepseconds(sdur)
             p = 1 - p
             dur -= sdur
+
+    def full_routine_iteration(self):
+        routines=[
+                self.rest,
+                self.flash_routine,
+                self.ramp_routine,
+                self.cont_ramp_routine,
+                self.pulse_routine,
+                ]
+        rout=weighted_choice(list(zip(routines,ROUTINE_PROBS)))
+        rout()
+        sleepseconds(random.uniform(*ROUTINE_WAIT))
+
+    def test_routine(self):
+        """
+        Go through all the routines to see if they are working properly
+        """
+        print "testing rest"
+        self.rest(verbose=True)
+        print "testing flash_routine"
+        self.flash_routine(verbose=True)
+        for d in range(4):
+            print "testing ramp_routine with shape %d" % (d,)
+            self.ramp_routine(forceshape=d,verbose=True)
+        print "testing cont_ramp_routine"
+        self.cont_ramp_routine(verbose=True)
+        print "testing pulse_routine"
+        self.pulse_routine(verbose=True)
+
