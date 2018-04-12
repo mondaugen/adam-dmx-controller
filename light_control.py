@@ -69,10 +69,6 @@ PULSE_INTENSITY=[120,255]
 
 ### Stuff below is just code
 
-def sleepseconds(secs):
-#    time.sleep(secs*0.1) # for testing, so we don't wait forever
-    time.sleep(secs)
-
 def weighted_choice(choices):
     total = sum(w for c, w in choices)
     r = random.uniform(0, total)
@@ -84,6 +80,16 @@ def weighted_choice(choices):
     assert False, "Shouldn't get here"
 
 class light_ctl_c(DmxPy.DmxPy):
+
+    def __init__(self,serial_port,fastmode=0):
+        self.fastmode = fastmode
+        DmxPy.DmxPy.__init__(self,serial_port)
+
+    def sleepseconds(self,secs):
+        if (self.fastmode):
+            time.sleep(secs*0.1) # for testing, so we don't wait forever
+        else:
+            time.sleep(secs)
 
     def send_val(self,chan,val):
         self.setChannel(chan,int(round(val)))
@@ -106,7 +112,7 @@ class light_ctl_c(DmxPy.DmxPy):
             if res > dur:
                 res = dur
                 inc = val - old_val
-            sleepseconds(res)
+            self.sleepseconds(res)
             old_val+=inc
             self.send_val(chan,old_val)
             dur -= res
@@ -126,7 +132,7 @@ class light_ctl_c(DmxPy.DmxPy):
         dur-=2*ramp
         old_val=ord(self.dmxData[chan])
         self.ramp(chan,val,ramp,ramp_res)
-        sleepseconds(dur)
+        self.sleepseconds(dur)
         self.ramp(chan,old_val,ramp,ramp_res)
 
 class light_conductor_c(light_ctl_c):
@@ -138,7 +144,7 @@ class light_conductor_c(light_ctl_c):
         dur=random.uniform(*REST_TIME_RANGE)
         if (verbose):
             print " resting for %f seconds" % (dur,)
-        sleepseconds(dur)
+        self.sleepseconds(dur)
 
     def flash_routine(self,verbose=False):
         """
@@ -158,7 +164,7 @@ class light_conductor_c(light_ctl_c):
                 ot = random.uniform(*FLASH_OFF_DUR)
                 if (verbose):
                     print "  sleeping %f seconds" % (ot,)
-                sleepseconds(ot)
+                self.sleepseconds(ot)
 
     def _ramp_shape_1(self,dur,verbose=False):
         """ up """
@@ -188,7 +194,7 @@ class light_conductor_c(light_ctl_c):
         if (verbose):
             print "ramp shape 4, dur %f" % (dur,)
         self.ramp(LIGHT_DMX_CHAN,255,dur/3,res=RAMP_RES)
-        sleepseconds(dur/3)
+        self.sleepseconds(dur/3)
         self.ramp(LIGHT_DMX_CHAN,0,dur/3,res=RAMP_RES)
 
     def ramp_routine(self,forceshape=None,verbose=False):
@@ -238,7 +244,7 @@ class light_conductor_c(light_ctl_c):
             if p > 0:
                 self.pulse(LIGHT_DMX_CHAN,i,sdur,ramp=dur*0.1)
             else:
-                sleepseconds(sdur)
+                self.sleepseconds(sdur)
             p = 1 - p
             dur -= sdur
 
@@ -252,7 +258,7 @@ class light_conductor_c(light_ctl_c):
                 ]
         rout=weighted_choice(list(zip(routines,ROUTINE_PROBS)))
         rout()
-        sleepseconds(random.uniform(*ROUTINE_WAIT))
+        self.sleepseconds(random.uniform(*ROUTINE_WAIT))
 
     def test_routine(self):
         """
