@@ -6,21 +6,21 @@ import random
 
 # The probability of choosing each routine
 ROUTINE_PROBS=[
-        20, # rest
-        20, # flash
-        20, # ramp
-        20, # continuous ramp
-        20, # pulse
+        14, # rest
+        22, # flash
+        28, # ramp
+        24, # continuous ramp
+        12, # pulse
         ]
 
 # The amount of time to wait between routines
-ROUTINE_WAIT=[1,40]
+ROUTINE_WAIT=[30,70]
 
 # DMX channel number for light
 LIGHT_DMX_CHAN=1
 
 # Range of rest time values in seconds
-REST_TIME_RANGE=[25,90]
+REST_TIME_RANGE=[30,70]
 
 # Global duration in seconds
 GLOBAL_DUR=20
@@ -248,7 +248,7 @@ class light_conductor_c(light_ctl_c):
             p = 1 - p
             dur -= sdur
 
-    def full_routine_iteration(self):
+    def full_routine_iteration(self,verbose=False):
         routines=[
                 self.rest,
                 self.flash_routine,
@@ -257,7 +257,7 @@ class light_conductor_c(light_ctl_c):
                 self.pulse_routine,
                 ]
         rout=weighted_choice(list(zip(routines,ROUTINE_PROBS)))
-        rout()
+        rout(verbose)
         self.sleepseconds(random.uniform(*ROUTINE_WAIT))
 
     def test_routine(self):
