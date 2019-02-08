@@ -1,4 +1,27 @@
-import DmxPy
+import os
+
+if 'USE_DMX' in os.environ:
+    import DmxPy
+    class light_ctl_low_level_dmx(DmxPy.DmxPy):
+        # Low level controller of a DMX controller using DmxPy
+
+        # to init just call DmxPy.DmxPy's __init__
+
+        def _send_val(self,chan,val):
+            self.setChannel(chan,int(round(val)))
+            self.render()
+
+        def get_old(self,chan):
+            return ord(self.dmxData[chan])
+
+if 'USE_LUCIDIO' in os.environ:
+    # Import Functionality of Analog Output Module
+    from lucidIo.LucidControlAO4 import LucidControlAO4
+    # Import Value Type for reading an writing of voltages
+    from lucidIo.Values import ValueVOS4
+    # Import LucidControl return values
+    from lucidIo import IoReturn 
+
 import time
 import random
 
@@ -79,11 +102,58 @@ def weighted_choice(choices):
         upto += w
     assert False, "Shouldn't get here"
 
-class light_ctl_c(DmxPy.DmxPy):
+def _default_transfer_function(x):
+    return x
 
-    def __init__(self,serial_port,fastmode=0):
+class light_ctl_low_level_lucid:
+    # Low level controller of lighting using LucidIO
+    # transfer_function takes a number in [0,1], and maps it to [0,1]. This
+    # object does the appropriate scaling between 0 and 10
+    def __init__(self,
+        transfer_function=_default_transfer_function,
+        interface_path='COM3',
+        # the minimum voltage that can make the light go on
+        min_voltage=0.4,
+        # the maximum voltage desired
+        max_voltage=10):
+        self.ao4 = LucidControlAO4(interface_path)
+        self.transfer_function=transfer_function
+        self.old_vals=dict()
+        self.min_voltage=min_voltage
+        self.max_voltage=max_voltage
+        # Open AO4 port
+        if (self.ao4.open() == False):
+            print( 'Error connecting to port {0} '.format(self.ao4.portName))
+            self.ao4.close()
+            exit()
+
+    def _send_val(self,chan,val):
+        val_=(self.max_voltage-self.min_voltage)*self.transfer_function(val/255.)+self.min_voltage
+        value = ValueVOS4()
+        value.setVoltage(val)
+        # Write value to channel 0
+        ret = self.ao4.setIo(chan, value)
+        # Check return value for success
+        if (ret == IoReturn.IoReturn.IO_RETURN_OK):
+            print( 'Set CH%d to %f V' % (chan,value.getVoltage(),))
+            self.old_vals[chan] = val
+        else:
+            print( 'Error setting CH%d voltage' % (chan,))
+
+    def get_old(self,chan):
+        try:
+            return self.old_vals[chan]
+        except KeyError:
+            return 0
+
+class light_ctl_c:
+
+    def __init__(self,light_ctl_low_level,fastmode=0):
+        # light_ctl_low_level is an instance of a class that defines the
+        # function _send_val(chan,val) which actually does the manipulation of
+        # the lights
         self.fastmode = fastmode
-        DmxPy.DmxPy.__init__(self,serial_port)
+        self.light_ctl_low_level=light_ctl_low_level
 
     def sleepseconds(self,secs):
         if (self.fastmode):
@@ -92,8 +162,7 @@ class light_ctl_c(DmxPy.DmxPy):
             time.sleep(secs)
 
     def send_val(self,chan,val):
-        self.setChannel(chan,int(round(val)))
-        self.render()
+        self.light_ctl_low_level._send_val(chan,val)
 
     def ramp(self,chan,val,dur,res):
         """
@@ -106,7 +175,7 @@ class light_ctl_c(DmxPy.DmxPy):
             dur = 1e-3
         if res == 0:
             res = 1e-3
-        old_val=ord(self.dmxData[chan])
+        old_val=self.light_ctl_low_level.get_old(chan)
         inc=(val-old_val)/(dur/res)
         while (dur > 0):
             if res > dur:
@@ -130,7 +199,7 @@ class light_ctl_c(DmxPy.DmxPy):
         if (2*ramp > dur):
             ramp=dur*0.5
         dur-=2*ramp
-        old_val=ord(self.dmxData[chan])
+        old_val=self.light_ctl_low_level.get_old(chan)
         self.ramp(chan,val,ramp,ramp_res)
         self.sleepseconds(dur)
         self.ramp(chan,old_val,ramp,ramp_res)
