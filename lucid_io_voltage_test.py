@@ -4,6 +4,16 @@ Created on 19.01.2014
 @author: Klaus Ummenhofer
 '''
 
+import os
+
+DEFAULT_ADDR='/dev/ttyACM0'
+
+if 'LUCID_ADDR' not in os.environ:
+    print("Using default address %s\n" % (DEFAULT_ADDR,))
+    lucid_addr=DEFAULT_ADDR
+else:
+    lucid_addr=os.environ['LUCID_ADDR']
+
 # Import Functionality of Analog Output Module
 from lucidIo.LucidControlAO4 import LucidControlAO4
 
@@ -20,7 +30,7 @@ if __name__ == '__main__':
     
     # Create AO4 object using COM8
     # For Linux OS \dev\ttyACM0 (with 0 as the number of the interface)
-    ao4 = LucidControlAO4('COM3')
+    ao4 = LucidControlAO4(lucid_addr)
     
     # Open AO4 port
     if (ao4.open() == False):

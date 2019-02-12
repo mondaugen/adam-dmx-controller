@@ -105,6 +105,15 @@ def weighted_choice(choices):
 def _default_transfer_function(x):
     return x
 
+class x_p_transfer_function:
+    """
+    A transfer function f(x) = x^p.
+    """
+    def __init__(self,p):
+        self.p=p
+    def __call__(self,x):
+        return x**self.p
+
 class light_ctl_low_level_lucid:
     # Low level controller of lighting using LucidIO
     # transfer_function takes a number in [0,1], and maps it to [0,1]. This
@@ -115,30 +124,64 @@ class light_ctl_low_level_lucid:
         # the minimum voltage that can make the light go on
         min_voltage=0.4,
         # the maximum voltage desired
-        max_voltage=10):
+        max_voltage=10,
+        verbose=False):
         self.ao4 = LucidControlAO4(interface_path)
         self.transfer_function=transfer_function
         self.old_vals=dict()
         self.min_voltage=min_voltage
         self.max_voltage=max_voltage
+        self.verbose=verbose
+
         # Open AO4 port
         if (self.ao4.open() == False):
-            print( 'Error connecting to port {0} '.format(self.ao4.portName))
+            msg='Error connecting to port {0} '.format(self.ao4.portName)
             self.ao4.close()
-            exit()
+            raise IOError(msg)
+
+        if self.verbose:
+            print( 'PORT OPENED')
+            
+            print(
+            '=========================================================================')
+            print( ' IDENTIFY DEVICE')
+            print(
+            '=========================================================================')
+        
+        ret = self.ao4.identify(0)
+        
+        if (ret == IoReturn.IoReturn.IO_RETURN_OK):
+            if self.verbose:
+                print( 'Device Class:       {0}'.format(self.ao4.getDeviceClassName()))
+                print( 'Device Type:        {0}'.format(self.ao4.getDeviceTypeName()))
+                print( 'Serial No.:         {0}'.format(self.ao4.getDeviceSnr()))
+                print( 'Firmware Rev.:      {0}'.format(self.ao4.getRevisionFw()))
+                print( 'Hardware Rev.:      {0}'.format(self.ao4.getRevisionHw()))
+        else:
+            msg='Identify Error'
+            self.ao4.close()
+            raise IOError(msg)
+
+    def __del__(self):
+        self.ao4.close()
 
     def _send_val(self,chan,val):
-        val_=(self.max_voltage-self.min_voltage)*self.transfer_function(val/255.)+self.min_voltage
+        val_=((self.max_voltage-self.min_voltage) *
+            self.transfer_function(val/255.)+self.min_voltage)
         value = ValueVOS4()
-        value.setVoltage(val)
+        value.setVoltage(val_)
         # Write value to channel 0
         ret = self.ao4.setIo(chan, value)
         # Check return value for success
         if (ret == IoReturn.IoReturn.IO_RETURN_OK):
-            print( 'Set CH%d to %f V' % (chan,value.getVoltage(),))
+            if self.verbose:
+                print( 'Set CH%d to %f V' % (chan,value.getVoltage(),))
+            # Stores the value before conversion so the inverse of the transfer
+            # function needn't be stored
             self.old_vals[chan] = val
         else:
-            print( 'Error setting CH%d voltage' % (chan,))
+            msg='Error setting CH%d voltage' % (chan,)
+            raise IOError(msg)
 
     def get_old(self,chan):
         try:
@@ -329,12 +372,16 @@ class light_conductor_c(light_ctl_c):
         rout(verbose)
         self.sleepseconds(random.uniform(*ROUTINE_WAIT))
 
+    def calibration_ramp(self,ramp_time=10):
+        """ Ramps from minimum value to maxmimum value in ramp_time seconds. """
+        self.send_val(LIGHT_DMX_CHAN,0)
+        self.ramp(LIGHT_DMX_CHAN,255,ramp_time,res=RAMP_RES)
+        self.ramp(LIGHT_DMX_CHAN,0,ramp_time,res=RAMP_RES)
+
     def test_routine(self):
         """
         Go through all the routines to see if they are working properly
         """
-        print "testing rest"
-        self.rest(verbose=True)
         print "testing flash_routine"
         self.flash_routine(verbose=True)
         for d in range(4):
@@ -344,4 +391,6 @@ class light_conductor_c(light_ctl_c):
         self.cont_ramp_routine(verbose=True)
         print "testing pulse_routine"
         self.pulse_routine(verbose=True)
+        print "testing rest"
+        self.rest(verbose=True)
 
