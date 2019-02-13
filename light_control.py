@@ -166,8 +166,11 @@ class light_ctl_low_level_lucid:
         self.ao4.close()
 
     def _send_val(self,chan,val):
-        val_=((self.max_voltage-self.min_voltage) *
-            self.transfer_function(val/255.)+self.min_voltage)
+        if val == 0:
+            val_ = 0
+        else:
+            val_=((self.max_voltage-self.min_voltage) *
+                self.transfer_function(val/255.)+self.min_voltage)
         value = ValueVOS4()
         value.setVoltage(val_)
         # Write value to channel 0
@@ -319,8 +322,10 @@ class light_conductor_c(light_ctl_c):
         else:
             d = random.uniform(*RAMP_DUR) * GLOBAL_DUR
         rampshape = random.randint(1,4)
+        if verbose:
+            print("Doing ramp_routine with ramp shape %d" % (rampshape,))
         for n in range(nramps):
-            getattr(self,"_ramp_shape_%d" % (rampshape,))(d)
+            getattr(self,"_ramp_shape_%d" % (rampshape,))(d,verbose=verbose)
     
     def cont_ramp_routine(self,verbose=False):
         """
@@ -370,7 +375,10 @@ class light_conductor_c(light_ctl_c):
                 ]
         rout=weighted_choice(list(zip(routines,ROUTINE_PROBS)))
         rout(verbose)
-        self.sleepseconds(random.uniform(*ROUTINE_WAIT))
+        rest_time=random.uniform(*ROUTINE_WAIT)
+        if verbose:
+            print("Resting between routines for %f seconds" % (rest_time,))
+        self.sleepseconds(rest_time)
 
     def calibration_ramp(self,ramp_time=10):
         """ Ramps from minimum value to maxmimum value in ramp_time seconds. """

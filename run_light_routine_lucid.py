@@ -44,7 +44,7 @@ while True:
             lc.light_ctl_low_level_lucid(
             transfer_function=lc.x_p_transfer_function(transfer_function_exponent),
             interface_path=lucid_addr,
-            verbose=verbose),
+            verbose=False),
             fastmode=fastmode)
         while True:
             lctr.full_routine_iteration(verbose=verbose)

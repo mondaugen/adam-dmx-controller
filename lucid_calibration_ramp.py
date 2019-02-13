@@ -20,7 +20,7 @@ p=float(sys.argv[1])
 lctr=lc.light_conductor_c(
     lc.light_ctl_low_level_lucid(
     transfer_function=lc.x_p_transfer_function(p),
-    interface_path="/dev/ttyACM0",
+    interface_path=lucid_addr,
     verbose=True),
     fastmode=0)
 
